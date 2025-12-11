@@ -1,0 +1,66 @@
+---
+title: "DS_320_Final_Project"
+author: "Sarah Khan, Eli Idiculla, Gracy Franco-Prassana, Aarushi Naik, Ishita Mittal"
+date: "2025-12-08"
+output: html_document
+---
+
+### Method Used: Concatenation-Based Integration
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Front Matter
+```{r}
+library(dplyr)
+```
+
+```{r}
+
+# 1. Read full dataset
+asthma_data <- read.csv("~/Desktop/DS 320/Final Project/Datasets/Asthma_Risks.csv", header = TRUE, stringsAsFactors = FALSE)
+View(asthma_data)
+```
+
+```{r}
+# 2. Create Medical History & Factors view
+medical_history_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Age",
+  "Gender",
+  "BMI",
+  "Smoking_Status",
+  "Family_History",
+  "Allergies",
+  "Physical_Activity_Level",
+  "Medication_Adherence",
+  "Comorbidities",
+  "Number_of_ER_Visits",
+  "Has_Asthma"        # shared label
+)]
+
+# 3. Create Environmental Factors view
+environmental_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Air_Pollution_Level",
+  "Occupation_Type",
+  "Peak_Expiratory_Flow",
+  "FeNO_Level",
+  "Asthma_Control_Level",
+  "Has_Asthma"        # shared label
+)]
+
+# 4. Quick checks
+head(medical_history_factors)
+head(environmental_factors)
+
+
+# 5. SAVE BOTH VIEWS AS SEPARATE CSV FILES
+write.csv(medical_history_factors, "medical_history_factors.csv", row.names = FALSE)
+write.csv(environmental_factors, "environmental_factors.csv", row.names = FALSE)
+
+View(medical_history_factors)
+View(environmental_factors)
+
+```
