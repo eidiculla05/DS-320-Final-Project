@@ -1,0 +1,266 @@
+---
+title: "Modeling Training"
+author: "Ishita Mittal"
+date: "2025-12-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+#  Load required libraries
+library(dplyr)
+library(caret)
+library(randomForest)
+library(pROC)
+library(MLmetrics)
+library(xgboost)
+
+#Load dataset
+asthma_data <- read.csv("/Users/ishitamittal/Desktop/Asthma_Risks.csv")
+
+asthma_data <- asthma_data %>% select(-Asthma_Control_Level) 
+```
+
+```{r}
+# Concatenation done by Sarah Khan
+# Create Medical History & Factors view
+medical_history_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Age",
+  "Gender",
+  "BMI",
+  "Smoking_Status",
+  "Family_History",
+  "Allergies",
+  "Physical_Activity_Level",
+  "Medication_Adherence",
+  "Comorbidities",
+  "Number_of_ER_Visits",
+  "Has_Asthma"        # shared label
+)]
+
+# 3. Create Environmental Factors view
+environmental_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Air_Pollution_Level",
+  "Occupation_Type",
+  "Peak_Expiratory_Flow",
+  "FeNO_Level",
+  "Has_Asthma"        # shared label
+)]
+
+# 4. Quick checks
+head(medical_history_factors)
+head(environmental_factors)
+
+
+# 5. SAVE BOTH VIEWS AS SEPARATE CSV FILES
+write.csv(medical_history_factors, "medical_history_factors.csv", row.names = FALSE)
+write.csv(environmental_factors, "environmental_factors.csv", row.names = FALSE)
+```
+
+```{r}
+#  Train-test split (80/20) for asthma data set (medical + environmental factors)
+asthma_data$Has_Asthma <- as.factor(asthma_data$Has_Asthma)
+set.seed(123)
+train_index_asthma <- createDataPartition(asthma_data$Has_Asthma, p = 0.8, list = FALSE)
+
+train_asthma <- asthma_data[train_index, ]
+test_asthma <- asthma_data[-train_index, ]
+```
+
+```{r}
+#  Train Random Forest Model for asthma data set (medical + environmental factors)
+set.seed(123)
+rf_model_asthma <- randomForest(
+  Has_Asthma~., 
+  data = train_asthma, 
+  ntree = 500, 
+  mtry = 5, 
+  importance = TRUE)
+```
+
+```{r}
+#  Predictions for Random Forest for asthma data set (medical + environmental factors)
+rf_pred_prob_asthma <- predict(rf_model_asthma, test_asthma, type = "prob")[,2]
+rf_pred_asthma <- ifelse(rf_pred_prob_asthma > 0.997666, 1, 0)
+
+y_test_rf_asthma <- as.numeric(as.character(test_asthma$Has_Asthma))
+```
+
+```{r}
+#  Train-test split (80/20) for medical history factors data set (medical factors only)
+medical_history_factors$Has_Asthma <- as.factor(medical_history_factors$Has_Asthma)
+set.seed(123)
+train_index_medical <- createDataPartition(medical_history_factors$Has_Asthma, p = 0.8, list = FALSE)
+
+train_medical <- medical_history_factors[train_index, ]
+test_medical <- medical_history_factors[-train_index, ]
+```
+
+```{r}
+#  Train Random Forest Model for medical history factors data set (medical factors only)
+set.seed(123)
+rf_model_medical <- randomForest(
+  Has_Asthma~., 
+  data = train_medical, 
+  ntree = 500, 
+  mtry = 5, 
+  importance = TRUE)
+```
+
+```{r}
+#  Predictions for Random Forest for medical history factors data set (medical factors only)
+rf_pred_prob_medical <- predict(rf_model_medical, test_medical, type = "prob")[,2]
+rf_pred_medical <- ifelse(rf_pred_prob_medical > 0.997666, 1, 0)
+
+y_test_rf_medical <- as.numeric(as.character(test_medical$Has_Asthma))
+```
+
+```{r}
+# Loading required libraries for XGBoost model 
+library(caret)
+library(dplyr)
+
+# Convert all character variables to factors for asthma data set (medical + environmental factors)
+df_asthma <- asthma_data |> mutate(across(where(is.character), as.factor))
+
+# One-hot encoding for asthma data set (medical + environmental factors)
+dummies <- dummyVars(~ ., data = df_asthma)
+df_numeric_asthma <- data.frame(predict(dummies, newdata = df_asthma))
+
+# Make sure target is numeric 0/1 for asthma data set (medical + environmental factors)
+df_numeric_asthma$Has_Asthma <- as.numeric(as.factor(df_asthma$Has_Asthma)) - 1
+df_numeric_asthma <- df_numeric_asthma %>% mutate(across(everything(), ~ as.numeric(.)))
+
+# Convert all character variables to factors for medical history factors data set (medical factors only)
+df_medical <- medical_history_factors |> mutate(across(where(is.character), as.factor))
+
+# One-hot encoding for medical history factors data set (medical factors only)
+dummies_medical <- dummyVars(~ ., data = df_medical)
+df_numeric_medical <- data.frame(predict(dummies_medical, newdata = df_medical))
+
+# Make sure target is numeric 0/1 for medical history factors data set (medical factors only)
+df_numeric_medical$Has_Asthma <- as.numeric(as.factor(df_medical$Has_Asthma)) - 1
+df_numeric_medical <- df_numeric_medical %>% mutate(across(everything(), ~ as.numeric(.)))
+```
+
+```{r}
+# Train-test split (80/20) for asthma data set (medical + environmental factors)
+set.seed(123)
+train_index_asthma <- createDataPartition(df_numeric_asthma$Has_Asthma, p = 0.8, list = FALSE)
+
+train_asthma <- df_numeric_asthma[train_index_asthma, ]
+test_asthma  <- df_numeric_asthma[-train_index_asthma, ] 
+```
+
+```{r}
+# Training model for asthma data set (medical + environmental factors)
+x_train_asthma <- as.matrix(train_asthma %>% select(-Has_Asthma))
+y_train_asthma <- train_asthma$Has_Asthma
+
+x_test_asthma  <- as.matrix(test_asthma %>% select(-Has_Asthma))
+y_test_asthma  <- test_asthma$Has_Asthma
+```
+
+```{r}
+# Using the XGBoost library 
+library(xgboost)
+
+# Training for asthma data set (medical + environmental factors)
+dtrain_asthma <- xgb.DMatrix(data = x_train_asthma, label = y_train_asthma)
+dtest_asthma  <- xgb.DMatrix(data = x_test_asthma,  label = y_test_asthma)
+```
+
+```{r}
+#  Train XGBoost Model for asthma data set (medical + environmental factors)
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model_asthma <- xgb.train(
+  params = params,
+  data = dtrain_asthma,
+  nrounds = 200,
+  watchlist = list(train = dtrain_asthma, test = dtest_asthma),
+  verbose = 1
+)
+```
+
+```{r}
+# Predict probabilities of class 1 (Has_Asthma = 1) for asthma data set (medical + environmental factors)
+xgb_pred_prob_asthma <- predict(xgb_model_asthma, dtest_asthma)
+
+xgb_pred_asthma <- ifelse(xgb_pred_prob_asthma > 0.997666, 1, 0)
+
+y_test_numeric_asthma <- as.numeric(as.character(y_test_asthma))
+```
+
+```{r}
+# Train-test split (80/20) for medical history factors data set (medical factors only)
+set.seed(123)
+train_index_medical <- createDataPartition(df_numeric_medical$Has_Asthma, p = 0.8, list = FALSE)
+
+train_medical <- df_numeric_medical[train_index_medical, ]
+test_medical  <- df_numeric_medical[-train_index_medical, ] 
+```
+
+```{r}
+# Training model for medical history factors data set (medical factors only)
+x_train_medical <- as.matrix(train_medical%>% select(-Has_Asthma))
+y_train_medical <- train_medical$Has_Asthma
+
+x_test_medical  <- as.matrix(test_medical %>% select(-Has_Asthma))
+y_test_medical  <- test_medical$Has_Asthma
+```
+
+```{r}
+# Using the XGBoost library for medical history factors data set (medical factors only)
+library(xgboost)
+
+# Training for asthma data set (medical + environmental factors)
+dtrain_medical <- xgb.DMatrix(data = x_train_medical, label = y_train_medical)
+dtest_medical  <- xgb.DMatrix(data = x_test_medical,  label = y_test_medical)
+```
+
+```{r}
+#  Train XGBoost Model for medical history factors data set (medical factors only)
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model_medical <- xgb.train(
+  params = params,
+  data = dtrain_medical,
+  nrounds = 200,
+  watchlist = list(train = dtrain_medical, test = dtest_medical),
+  verbose = 1
+)
+```
+
+```{r}
+# Predict probabilities of class 1 (Has_Asthma = 1) for medical history factors data set (medical factors only)
+xgb_pred_prob_medical <- predict(xgb_model_medical, dtest_medical)
+
+xgb_pred_medical <- ifelse(xgb_pred_prob_medical > 0.997666, 1, 0)
+
+y_test_numeric_medical <- as.numeric(as.character(y_test_medical))
+```
+
+
+
