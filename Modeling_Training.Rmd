@@ -1,0 +1,185 @@
+---
+title: "DS320 Final"
+author: "Ishita Mittal"
+date: "2025-12-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+# ---------------------------
+#  Load libraries
+# ---------------------------
+library(dplyr)
+library(caret)
+library(randomForest)
+library(pROC)
+library(MLmetrics)
+library(xgboost)
+
+#Load dataset
+asthma <- read.csv("~/Desktop/Asthma_Risks.csv")
+
+asthma <- asthma %>% select(-Asthma_Control_Level)
+```
+
+```{r}
+# ---------------------------
+#  Train-test split (80/20)
+# ---------------------------
+asthma$Has_Asthma <- as.factor(asthma$Has_Asthma)
+set.seed(123)
+train_index <- createDataPartition(asthma$Has_Asthma, p = 0.8, list = FALSE)
+
+train <- asthma[train_index, ]
+test <- asthma[-train_index, ]
+```
+
+```{r}
+# ---------------------------
+#  Train Random Forest Model
+# ---------------------------
+set.seed(123)
+rf_model <- randomForest(
+  Has_Asthma~., 
+  data = train, 
+  ntree = 500, 
+  mtry = 5, 
+  importance = TRUE)
+```
+
+```{r}
+# ---------------------------
+#  Predictions for Random Forest
+# ---------------------------
+rf_pred_prob <- predict(rf_model, test, type = "prob")[,2]
+rf_pred <- ifelse(rf_pred_prob > 0.997666, 1, 0)
+
+y_test_rf <- as.numeric(as.character(test$Has_Asthma))
+
+# Metrics
+rf_accuracy  <- Accuracy(rf_pred,  y_test_rf)
+rf_precision <- Precision(rf_pred, y_test_rf, positive = "1")
+rf_recall    <- Recall(rf_pred,    y_test_rf, positive = "1")
+rf_f1        <- F1_Score(rf_pred,  y_test_rf, positive = "1")
+
+# ROC-AUC
+rf_roc <- roc(y_test_rf, rf_pred_prob)
+rf_auc <- auc(rf_roc)
+
+# Display metrics
+data.frame(
+  Model = "Random Forest",
+  Accuracy = rf_accuracy,
+  Precision = rf_precision,
+  Recall = rf_recall,
+  F1 = rf_f1,
+  AUC = rf_auc
+)
+
+# ROC Curve
+plot(rf_roc, col = "blue", main = "Random Forest ROC Curve")
+```
+
+```{r}
+library(caret)
+library(dplyr)
+
+# Convert all character variables to factors
+df <- asthma |> mutate(across(where(is.character), as.factor))
+
+# One-hot encoding
+dummies <- dummyVars(~ ., data = df)
+df_numeric <- data.frame(predict(dummies, newdata = df))
+
+# Make sure target is numeric 0/1
+df_numeric$Has_Asthma <- as.numeric(as.factor(df$Has_Asthma)) - 1
+
+df_numeric <- df_numeric %>% mutate(across(everything(), ~ as.numeric(.)))
+```
+
+```{r}
+set.seed(123)
+train_index <- createDataPartition(df_numeric$Has_Asthma, p = 0.8, list = FALSE)
+
+train <- df_numeric[train_index, ]
+test  <- df_numeric[-train_index, ]
+```
+
+```{r}
+x_train <- as.matrix(train %>% select(-Has_Asthma))
+y_train <- train$Has_Asthma
+
+x_test  <- as.matrix(test %>% select(-Has_Asthma))
+y_test  <- test$Has_Asthma
+```
+
+```{r}
+library(xgboost)
+
+dtrain <- xgb.DMatrix(data = x_train, label = y_train)
+dtest  <- xgb.DMatrix(data = x_test,  label = y_test)
+```
+
+```{r}
+# ---------------------------
+#  Train XGBoost Model
+# ---------------------------
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 200,
+  watchlist = list(train = dtrain, test = dtest),
+  verbose = 1
+)
+```
+
+```{r}
+# Predict probabilities of class 1 (Has_Asthma = 1)
+xgb_pred_prob <- predict(xgb_model, dtest)
+
+xgb_pred <- ifelse(xgb_pred_prob > 0.997666, 1, 0)
+
+y_test_numeric <- as.numeric(as.character(y_test))
+# Compute metrics
+xgb_accuracy  <- Accuracy(xgb_pred, y_test_numeric)
+xgb_precision <- Precision(xgb_pred, y_test_numeric, positive = "1")
+xgb_recall    <- Recall(xgb_pred, y_test_numeric, positive = "1")
+xgb_f1        <- F1_Score(xgb_pred, y_test_numeric, positive = "1")
+
+# ROC-AUC
+xgb_roc <- roc(y_test_numeric, xgb_pred_prob)
+xgb_auc <- auc(xgb_roc)
+
+# Display metrics
+data.frame(
+  Model = "XGBoost",
+  Accuracy = xgb_accuracy,
+  Precision = xgb_precision,
+  Recall = xgb_recall,
+  F1 = xgb_f1,
+  AUC = xgb_auc
+)
+
+# ROC Curve
+plot(xgb_roc, col = "red", main = "XGBoost ROC Curve")
+
+```
+
+
+
+
+
