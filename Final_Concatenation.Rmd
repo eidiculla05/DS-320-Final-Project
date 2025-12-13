@@ -1,0 +1,87 @@
+---
+title: "DS_320_Final_Project"
+author: "Sarah Khan, Eli Idiculla, Gracy Franco-Prassana, Aruushi Naik, Ishita Mittal"
+date: "2025-12-08"
+output: html_document
+---
+
+### Method Used: Concatenation-Based Integration
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Front Matter
+```{r}
+library(dplyr)
+```
+
+```{r}
+
+# 1. Read full dataset
+asthma_data <- read.csv("~/Desktop/DS 320/Final Project/Datasets/Asthma_Risks.csv", header = TRUE, stringsAsFactors = FALSE)
+View(asthma_data)
+```
+
+```{r}
+# 2. The separate datasets as they are
+medical_history_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Age",
+  "Gender",
+  "BMI",
+  "Smoking_Status",
+  "Family_History",
+  "Allergies",
+  "Physical_Activity_Level",
+  "Medication_Adherence",
+  "Comorbidities",
+  "Number_of_ER_Visits",
+  "Has_Asthma"        
+)]
+
+environmental_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Air_Pollution_Level",
+  "Occupation_Type",
+  "Peak_Expiratory_Flow",
+  "FeNO_Level",
+  "Has_Asthma"        # shared label
+)]
+
+
+write.csv(medical_history_factors, "medical_history_factors.csv", row.names = FALSE)
+write.csv(environmental_factors, "environmental_factors.csv", row.names = FALSE)
+
+View(medical_history_factors)
+View(environmental_factors)
+
+```
+
+```{r}
+# 6. Concatenation of the two separate views
+
+# Ensure Patient_ID is the same type in both datasets
+medical_history_factors$Patient_ID <- as.character(medical_history_factors$Patient_ID)
+environmental_factors$Patient_ID <- as.character(environmental_factors$Patient_ID)
+
+# Remove duplicate Has_Asthma label
+environmental_factors_no_label <- environmental_factors %>%
+  select(-Has_Asthma)
+
+# Connecting through Patient_ID
+concatenated_data <- medical_history_factors %>%
+  inner_join(environmental_factors_no_label, by = "Patient_ID")
+
+# Quick checks
+dim(concatenated_data)
+head(concatenated_data)
+
+# Save concatenated dataset
+write.csv(concatenated_data,
+          "concatenated_asthma_data.csv",
+          row.names = FALSE)
+
+View(concatenated_data)
+
+```
