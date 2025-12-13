@@ -1,0 +1,602 @@
+---
+title: "DS320-Final_Project"
+author: "Ishita Mittal, Aruushi Naik, Sarah Khan, Gracy Prasanna, Eli Idiculla"
+date: "2025-12-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Front Matter
+```{r}
+library(dplyr)
+```
+
+```{r}
+# Concatenation by Sarah Khan 
+# 1. Read full dataset
+asthma_data <- read.csv("~/Desktop/DS 320/Final Project/Datasets/Asthma_Risks.csv", header = TRUE, stringsAsFactors = FALSE)
+View(asthma_data)
+```
+
+```{r}
+# 2. Create Medical History & Factors view
+medical_history_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Age",
+  "Gender",
+  "BMI",
+  "Smoking_Status",
+  "Family_History",
+  "Allergies",
+  "Physical_Activity_Level",
+  "Medication_Adherence",
+  "Comorbidities",
+  "Number_of_ER_Visits",
+  "Has_Asthma"        # shared label
+)]
+
+# 3. Create Environmental Factors view
+environmental_factors <- asthma_data[, c(
+  "Patient_ID",
+  "Air_Pollution_Level",
+  "Occupation_Type",
+  "Peak_Expiratory_Flow",
+  "FeNO_Level",
+  "Has_Asthma"        # shared label
+)]
+
+# 4. Quick checks
+head(medical_history_factors)
+head(environmental_factors)
+
+
+# 5. SAVE BOTH VIEWS AS SEPARATE CSV FILES
+write.csv(medical_history_factors, "medical_history_factors.csv", row.names = FALSE)
+write.csv(environmental_factors, "environmental_factors.csv", row.names = FALSE)
+
+View(medical_history_factors)
+View(environmental_factors)
+```
+
+```{r}
+#  Load required libraries
+library(dplyr)
+library(caret)
+library(randomForest)
+library(pROC)
+library(MLmetrics)
+library(xgboost)
+library(SHAPforxgboost)
+library(iml)
+library(data.table)
+```
+
+```{r}
+# Balancing the dataset
+table(asthma_data$Has_Asthma)
+set.seed(123) 
+# separate classes
+class_0 <- asthma_data[asthma_data$Has_Asthma == 0, ]
+class_1 <- asthma_data[asthma_data$Has_Asthma == 1, ]
+
+# randomly select 2433 rows from class 0
+class_0_down <- class_0[sample(nrow(class_0), 2433), ]
+
+# combine back together
+df_balanced <- rbind(class_0_down, class_1)
+
+# shuffle rows after combining
+asthma_data <- df_balanced[sample(nrow(df_balanced)), ]
+table(asthma_data$Has_Asthma)
+```
+
+```{r}
+#EDA by Aruushi Naik 
+dim(asthma_data)
+
+#Find the total number of N/A values in each column
+sum(asthma_data$Asthma_Control_Level == "N/A", na.rm = TRUE)
+
+#Checking if the dataset is balanced 
+asthma_data %>%
+  group_by(Has_Asthma) %>%
+  summarise(
+    Count = n()
+  )
+```
+
+#Histograms 
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Age
+       )) + 
+  geom_histogram(binwidth = 5, color = "black", fill = "#ACDDDE") +
+  labs(x = "Age",
+       y = "Number of Patients",
+       title = "Ages in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Smoking_Status
+       )) + 
+  geom_bar(fill = "#E1F8DC", color = "black") +
+  labs(x = "Smoking Status",
+       y = "Number of Patients",
+       title = "Types of Smokers in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Air_Pollution_Level
+       )) + 
+  geom_bar(fill = "#e4fff6", color = "black") +
+  labs(x = "Air Pollution Levels",
+       y = "Number of Patients",
+       title = "Air Pollution Levels in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = FeNO_Level
+       )) + 
+  geom_histogram(binwidth = 5, color = "black", fill = "#CAF1DE") +
+  labs(x = "Nitric Oxide Levels",
+       y = "Number of Patients",
+       title = "Levels of FeNO in Asthma Dataset")
+```
+
+```{r}
+# Model training by Ishita Mittal 
+# Train-test split (80/20) for asthma data set (medical + environmental factors)
+asthma_data$Has_Asthma <- as.factor(asthma_data$Has_Asthma)
+set.seed(123)
+train_index_asthma <- createDataPartition(asthma_data$Has_Asthma, p = 0.8, list = FALSE)
+
+train_asthma <- asthma_data[train_index_asthma, ]
+test_asthma <- asthma_data[-train_index_asthma, ]
+```
+
+```{r}
+#  Train Random Forest Model for asthma data set (medical + environmental factors)
+set.seed(123)
+rf_model_asthma <- randomForest(
+  Has_Asthma~., 
+  data = train_asthma, 
+  ntree = 500, 
+  mtry = 5, 
+  importance = TRUE)
+```
+
+```{r}
+#  Predictions for Random Forest for asthma data set (medical + environmental factors)
+rf_pred_prob_asthma <- predict(rf_model_asthma, test_asthma, type = "prob")[,2]
+rf_pred_asthma <- ifelse(rf_pred_prob_asthma > 0.8, 1, 0)
+
+y_test_rf_asthma <- as.numeric(as.character(test_asthma$Has_Asthma))
+```
+
+```{r}
+#  Train-test split (80/20) for medical history factors data set (medical factors only)
+medical_history_factors$Has_Asthma <- as.factor(medical_history_factors$Has_Asthma)
+set.seed(123)
+train_index_medical <- createDataPartition(medical_history_factors$Has_Asthma, p = 0.8, list = FALSE)
+
+train_medical <- medical_history_factors[train_index_medical, ]
+test_medical <- medical_history_factors[-train_index_medical, ]
+```
+
+```{r}
+#  Train Random Forest Model for medical history factors data set (medical factors only)
+set.seed(123)
+rf_model_medical <- randomForest(
+  Has_Asthma~., 
+  data = train_medical, 
+  ntree = 500, 
+  mtry = 5, 
+  importance = TRUE)
+```
+
+```{r}
+#  Predictions for Random Forest for medical history factors data set (medical factors only)
+rf_pred_prob_medical <- predict(rf_model_medical, test_medical, type = "prob")[,2]
+rf_pred_medical <- ifelse(rf_pred_prob_medical > 0.8, 1, 0)
+
+y_test_rf_medical <- as.numeric(as.character(test_medical$Has_Asthma))
+```
+
+```{r}
+### Random Forest 
+###############################################################
+# --------------- Model 1: Medical + Environmental ------------#
+###############################################################
+
+# ---- Performance Metrics ----
+rf_accuracy_asthma  <- Accuracy(rf_pred_asthma, y_test_rf_asthma)
+rf_precision_asthma <- Precision(rf_pred_asthma, y_test_rf_asthma, positive = "1")
+rf_recall_asthma    <- Recall(rf_pred_asthma,    y_test_rf_asthma, positive = "1")
+rf_f1_asthma        <- F1_Score(rf_pred_asthma,  y_test_rf_asthma, positive = "1")
+
+# ROC & AUC
+rf_roc_asthma <- roc(y_test_rf_asthma, rf_pred_prob_asthma)
+rf_auc_asthma <- auc(rf_roc_asthma)
+
+# ---- Metrics Table ----
+asthma_metrics <- data.frame(
+  Model = "Random Forest (Medical + Environmental)",
+  Accuracy  = rf_accuracy_asthma,
+  Precision = rf_precision_asthma,
+  Recall    = rf_recall_asthma,
+  F1        = rf_f1_asthma,
+  AUC       = rf_auc_asthma
+)
+asthma_metrics
+
+# ---- ROC Curve ----
+plot(rf_roc_asthma, col = "blue", main = "ROC Curve - Random Forest (Medical + Environmental)")
+
+# ---- SHAP-like Feature Importances ----
+# Random Forest importance is averaged Gini + permutation importance (proxy for SHAP)
+importance_matrix_asthma <- importance(rf_model_asthma)
+# Take mean of first two columns (MeanDecreaseAccuracy + MeanDecreaseGini)
+mean_vals_asthma <- rowMeans(importance_matrix_asthma[, 1:2])
+
+shap_table_asthma <- data.frame(
+  Feature = rownames(importance_matrix_asthma),
+  SHAPValues = mean_vals_asthma
+) %>% arrange(desc(SHAPValues))
+
+rownames(shap_table_asthma) <- NULL
+print(shap_table_asthma)
+
+###############################################################
+# -------------------- Model 2: Medical Only ------------------#
+###############################################################
+
+# ---- Performance Metrics ----
+rf_accuracy_medical  <- Accuracy(rf_pred_medical, y_test_rf_medical)
+rf_precision_medical <- Precision(rf_pred_medical, y_test_rf_medical, positive = "1")
+rf_recall_medical    <- Recall(rf_pred_medical,    y_test_rf_medical, positive = "1")
+rf_f1_medical        <- F1_Score(rf_pred_medical,  y_test_rf_medical, positive = "1")
+
+# ROC & AUC
+rf_roc_medical <- roc(y_test_rf_medical, rf_pred_prob_medical)
+rf_auc_medical <- auc(rf_roc_medical)
+
+# ---- Metrics Table ----
+medical_metrics <- data.frame(
+  Model = "Random Forest (Medical Only)",
+  Accuracy  = rf_accuracy_medical,
+  Precision = rf_precision_medical,
+  Recall    = rf_recall_medical,
+  F1        = rf_f1_medical,
+  AUC       = rf_auc_medical
+)
+medical_metrics
+
+# ---- ROC Curve ----
+plot(rf_roc_medical, col = "red", main = "ROC Curve - RF (Medical Only)")
+
+# ---- SHAP-like Feature Importances ----
+importance_matrix_medical <- importance(rf_model_medical)
+mean_vals_medical <- rowMeans(importance_matrix_medical[, 1:2])
+
+shap_table_medical <- data.frame(
+  Feature = rownames(importance_matrix_medical),
+  SHAPValues = mean_vals_medical
+) %>% arrange(desc(SHAPValues))
+
+rownames(shap_table_medical) <- NULL
+print(shap_table_medical)
+
+###############################################################
+# ----------- Combine RF Metrics (Both Models) ---------------#
+###############################################################
+
+RF_final_metrics <- rbind(asthma_metrics, medical_metrics)
+RF_final_metrics
+
+###############################################################
+# ----------- Compare Feature Importances Side-by-Side --------#
+###############################################################
+
+shap_table_asthma$Model  <- "Medical + Environmental"
+shap_table_medical$Model <- "Medical Only"
+# Merge on Feature name
+shap_compare <- merge(
+  shap_table_asthma,
+  shap_table_medical,
+  by = "Feature",
+  all = TRUE,
+  suffixes = c("_MedEnv", "_MedOnly")
+)
+# Keep only SHAP columns for comparison
+shap_compare <- shap_compare %>%
+  select(Feature,
+         SHAPValues_MedEnv,
+         SHAPValues_MedOnly)
+
+# Sort by highest SHAP from Medical+Environmental model
+shap_compare <- shap_compare %>%
+  arrange(desc(SHAPValues_MedEnv))
+
+print(shap_compare)
+```
+
+```{r}
+# Loading required libraries for XGBoost model 
+library(caret)
+library(dplyr)
+
+# Convert all character variables to factors for asthma data set (medical + environmental factors)
+df_asthma <- asthma_data |> mutate(across(where(is.character), as.factor))
+
+# One-hot encoding for asthma data set (medical + environmental factors)
+#dummies <- dummyVars(~ ., data = df_asthma)
+#df_numeric_asthma <- data.frame(predict(dummies, newdata = df_asthma))
+
+# Make sure target is numeric 0/1 for asthma data set (medical + environmental factors)
+#df_numeric_asthma$Has_Asthma <- as.numeric(as.factor(df_asthma$Has_Asthma)) - 1
+#df_numeric_asthma <- df_numeric_asthma %>% mutate(across(everything(), ~ as.numeric(.)))
+
+dummies <- dummyVars(Has_Asthma ~ ., data = df_asthma)
+df_numeric_asthma <- data.frame(predict(dummies, newdata = df_asthma))
+df_numeric_asthma$Has_Asthma <- as.numeric(as.factor(df_asthma$Has_Asthma)) - 1
+
+# Convert all character variables to factors for medical history factors data set (medical factors only)
+df_medical <- medical_history_factors |> mutate(across(where(is.character), as.factor))
+
+# One-hot encoding for medical history factors data set (medical factors only)
+#dummies_medical <- dummyVars(~ ., data = df_medical)
+#df_numeric_medical <- data.frame(predict(dummies_medical, newdata = df_medical))
+
+# Make sure target is numeric 0/1 for medical history factors data set (medical factors only)
+#df_numeric_medical$Has_Asthma <- as.numeric(as.factor(df_medical$Has_Asthma)) - 1
+#df_numeric_medical <- df_numeric_medical %>% mutate(across(everything(), ~ as.numeric(.)))
+
+dummies_medical <- dummyVars(Has_Asthma ~ ., data = df_medical)
+df_numeric_medical <- data.frame(predict(dummies_medical, newdata = df_medical))
+df_numeric_medical$Has_Asthma <- as.numeric(as.factor(df_medical$Has_Asthma)) - 1
+```
+
+```{r}
+# Train-test split (80/20) for asthma data set (medical + environmental factors)
+set.seed(123)
+train_index_asthma <- createDataPartition(df_numeric_asthma$Has_Asthma, p = 0.8, list = FALSE)
+
+train_asthma <- df_numeric_asthma[train_index_asthma, ]
+test_asthma  <- df_numeric_asthma[-train_index_asthma, ] 
+```
+
+```{r}
+# Training model for asthma data set (medical + environmental factors)
+x_train_asthma <- as.matrix(train_asthma %>% select(-Has_Asthma))
+y_train_asthma <- train_asthma$Has_Asthma
+
+x_test_asthma  <- as.matrix(test_asthma %>% select(-Has_Asthma))
+y_test_asthma  <- test_asthma$Has_Asthma
+```
+
+```{r}
+# Using the XGBoost library 
+library(xgboost)
+
+# Training for asthma data set (medical + environmental factors)
+dtrain_asthma <- xgb.DMatrix(data = x_train_asthma, label = y_train_asthma)
+dtest_asthma  <- xgb.DMatrix(data = x_test_asthma,  label = y_test_asthma)
+```
+
+```{r}
+#  Train XGBoost Model for asthma data set (medical + environmental factors)
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model_asthma <- xgb.train(
+  params = params,
+  data = dtrain_asthma,
+  nrounds = 200,
+  watchlist = list(train = dtrain_asthma, test = dtest_asthma),
+  verbose = 1
+)
+```
+
+```{r}
+# Predict probabilities of class 1 (Has_Asthma = 1) for asthma data set (medical + environmental factors)
+xgb_pred_prob_asthma <- predict(xgb_model_asthma, dtest_asthma)
+
+xgb_pred_asthma <- ifelse(xgb_pred_prob_asthma > 0.997666, 1, 0)
+
+y_test_numeric_asthma <- as.numeric(as.character(y_test_asthma))
+```
+
+```{r}
+# Train-test split (80/20) for medical history factors data set (medical factors only)
+set.seed(123)
+train_index_medical <- createDataPartition(df_numeric_medical$Has_Asthma, p = 0.8, list = FALSE)
+
+train_medical <- df_numeric_medical[train_index_medical, ]
+test_medical  <- df_numeric_medical[-train_index_medical, ] 
+```
+
+```{r}
+# Training model for medical history factors data set (medical factors only)
+x_train_medical <- as.matrix(train_medical%>% select(-Has_Asthma))
+y_train_medical <- train_medical$Has_Asthma
+
+x_test_medical  <- as.matrix(test_medical %>% select(-Has_Asthma))
+y_test_medical  <- test_medical$Has_Asthma
+```
+
+```{r}
+# Using the XGBoost library for medical history factors data set (medical factors only)
+library(xgboost)
+
+# Training for asthma data set (medical + environmental factors)
+dtrain_medical <- xgb.DMatrix(data = x_train_medical, label = y_train_medical)
+dtest_medical  <- xgb.DMatrix(data = x_test_medical,  label = y_test_medical)
+```
+
+```{r}
+#  Train XGBoost Model for medical history factors data set (medical factors only)
+params <- list(
+  booster = "gbtree",
+  objective = "binary:logistic",
+  eval_metric = "logloss",
+  eta = 0.1,
+  max_depth = 6,
+  subsample = 0.8,
+  colsample_bytree = 0.8
+)
+
+xgb_model_medical <- xgb.train(
+  params = params,
+  data = dtrain_medical,
+  nrounds = 200,
+  watchlist = list(train = dtrain_medical, test = dtest_medical),
+  verbose = 1
+)
+```
+
+```{r}
+# Predict probabilities of class 1 (Has_Asthma = 1) for medical history factors data set (medical factors only)
+xgb_pred_prob_medical <- predict(xgb_model_medical, dtest_medical)
+
+xgb_pred_medical <- ifelse(xgb_pred_prob_medical > 0.8, 1, 0)
+
+y_test_numeric_medical <- as.numeric(as.character(y_test_medical))
+```
+
+### XGBoost Model
+```{r}
+### XGBoost Model 
+###############################################################
+# --------------- Model 3: Medical + Environmental ------------#
+###############################################################
+
+# ---- Performance Metrics ----
+xgb_accuracy_asthma  <- Accuracy(xgb_pred_asthma, y_test_numeric_asthma)
+xgb_precision_asthma <- Precision(xgb_pred_asthma, y_test_numeric_asthma, positive = "1")
+xgb_recall_asthma    <- Recall(xgb_pred_asthma,    y_test_numeric_asthma, positive = "1")
+xgb_f1_asthma        <- F1_Score(xgb_pred_asthma,  y_test_numeric_asthma, positive = "1")
+
+# ---- ROC & AUC ----
+xgb_roc_asthma <- roc(y_test_numeric_asthma, xgb_pred_prob_asthma)
+xgb_auc_asthma <- auc(xgb_roc_asthma)
+
+# ---- Metrics Table ----
+metrics_xgb_asthma <- data.frame(
+  Model = "XGBoost (Medical + Environmental)",
+  Accuracy = xgb_accuracy_asthma,
+  Precision = xgb_precision_asthma,
+  Recall = xgb_recall_asthma,
+  F1 = xgb_f1_asthma,
+  AUC = xgb_auc_asthma
+)
+
+metrics_xgb_asthma
+
+# ---- ROC Curve ----
+plot(xgb_roc_asthma, col = "blue", main = "ROC Curve - XGB (Medical + Environmental)")
+
+# ---- SHAP Values (XGBoost Native) ----
+shap_asthma <- predict(xgb_model_asthma, x_test_asthma, predcontrib = TRUE)
+shap_asthma <- shap_asthma[, -ncol(shap_asthma)]  # remove bias term
+
+mean_shap_asthma <- colMeans(abs(shap_asthma))
+
+shap_table_asthma <- data.frame(
+  Feature = colnames(x_test_asthma),
+  SHAP_MedEnv = mean_shap_asthma
+) %>% arrange(desc(SHAP_MedEnv))
+
+print(shap_table_asthma)
+
+###############################################################
+# ------------------ Model 4: XGBoost (Medical Only) ---------#
+###############################################################
+
+# ---- Performance Metrics ----
+
+xgb_accuracy_medical  <- Accuracy(xgb_pred_medical, y_test_numeric_medical)
+xgb_precision_medical <- Precision(xgb_pred_medical, y_test_numeric_medical, positive = "1")
+xgb_recall_medical    <- Recall(xgb_pred_medical,    y_test_numeric_medical, positive = "1")
+xgb_f1_medical        <- F1_Score(xgb_pred_medical,  y_test_numeric_medical, positive = "1")
+
+# ---- ROC & AUC ----
+xgb_roc_medical <- roc(y_test_numeric_medical, xgb_pred_prob_medical)
+xgb_auc_medical <- auc(xgb_roc_medical)
+
+# ---- Metrics Table ----
+metrics_xgb_medical <- data.frame(
+  Model = "XGBoost (Medical Only)",
+  Accuracy = xgb_accuracy_medical,
+  Precision = xgb_precision_medical,
+  Recall = xgb_recall_medical,
+  F1 = xgb_f1_medical,
+  AUC = xgb_auc_medical
+)
+
+metrics_xgb_medical
+
+# ---- ROC Curve ----
+plot(xgb_roc_medical, col = "red", main = "ROC Curve - XGB (Medical Only)")
+
+###############################################################
+# ----------- Combine XGBoost Metrics (Both Models) ----------#
+###############################################################
+
+xgb_final_metrics <- rbind(
+  metrics_xgb_asthma,
+  metrics_xgb_medical
+)
+xgb_final_metrics
+
+###############################################################
+# ----------- SHAP Comparison: Side-by-Side -----------------#
+###############################################################
+
+shap_medical <- predict(xgb_model_medical, x_test_medical, predcontrib = TRUE)
+shap_medical <- shap_medical[, -ncol(shap_medical)]  # remove bias term
+
+mean_shap_medical <- colMeans(abs(shap_medical))
+
+shap_table_medical <- data.frame(
+  Feature = colnames(x_test_medical),
+  SHAP_MedOnly = mean_shap_medical
+) %>% arrange(desc(SHAP_MedOnly))
+
+print(shap_table_medical)
+
+shap_compare <- merge(
+  shap_table_asthma,
+  shap_table_medical,
+  by = "Feature",
+  all = TRUE
+)
+
+# Sort features by Medical+Environmental SHAP values
+shap_compare <- shap_compare %>%
+  arrange(desc(SHAP_MedEnv))
+
+print(shap_compare)
+
+```
+```{r}
+combined_all_models <- rbind(
+  RF_final_metrics,
+  xgb_final_metrics
+)
+
+combined_all_models
+```
+
