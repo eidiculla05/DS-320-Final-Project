@@ -81,6 +81,61 @@ df_balanced <- rbind(class_0_down, class_1)
 asthma_data <- df_balanced[sample(nrow(df_balanced)), ]
 table(asthma_data$Has_Asthma)
 ```
+#EDA 
+```{r}
+dim(asthma_data)
+
+#Find the total number of N/A values in each column
+sum(asthma_data$Asthma_Control_Level == "N/A", na.rm = TRUE)
+
+#Checking if the dataset is balanced 
+asthma_data %>%
+  group_by(Has_Asthma) %>%
+  summarise(
+    Count = n()
+  )
+```
+
+#Histograms 
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Age
+       )) + 
+  geom_histogram(binwidth = 5, color = "black", fill = "#ACDDDE") +
+  labs(x = "Age",
+       y = "Number of Patients",
+       title = "Ages in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Smoking_Status
+       )) + 
+  geom_bar(fill = "#E1F8DC", color = "black") +
+  labs(x = "Smoking Status",
+       y = "Number of Patients",
+       title = "Types of Smokers in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = Air_Pollution_Level
+       )) + 
+  geom_bar(fill = "#e4fff6", color = "black") +
+  labs(x = "Air Pollution Levels",
+       y = "Number of Patients",
+       title = "Air Pollution Levels in Asthma Dataset")
+```
+
+```{r}
+ggplot(data = asthma_data, 
+       mapping = aes(x = FeNO_Level
+       )) + 
+  geom_histogram(binwidth = 5, color = "black", fill = "#CAF1DE") +
+  labs(x = "Nitric Oxide Levels",
+       y = "Number of Patients",
+       title = "Levels of FeNO in Asthma Dataset")
+```
 
 ```{r}
 # Model training by Ishita Mittal 
