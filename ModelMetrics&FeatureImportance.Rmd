@@ -63,6 +63,23 @@ head(environmental_factors)
 # 5. SAVE BOTH VIEWS AS SEPARATE CSV FILES
 write.csv(medical_history_factors, "medical_history_factors.csv", row.names = FALSE)
 write.csv(environmental_factors, "environmental_factors.csv", row.names = FALSE)
+
+# 6. Balancing the dataset
+table(asthma_data$Has_Asthma)
+set.seed(123) 
+# separate classes
+class_0 <- asthma_data[asthma_data$Has_Asthma == 0, ]
+class_1 <- asthma_data[asthma_data$Has_Asthma == 1, ]
+
+# randomly select 2433 rows from class 0
+class_0_down <- class_0[sample(nrow(class_0), 2433), ]
+
+# combine back together
+df_balanced <- rbind(class_0_down, class_1)
+
+# shuffle rows after combining
+asthma_data <- df_balanced[sample(nrow(df_balanced)), ]
+table(asthma_data$Has_Asthma)
 ```
 
 ```{r}
