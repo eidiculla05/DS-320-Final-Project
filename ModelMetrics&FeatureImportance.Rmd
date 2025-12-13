@@ -143,23 +143,22 @@ y_test_rf_medical <- as.numeric(as.character(test_medical$Has_Asthma))
 
 
 ```{r}
-### RF Metrics 
-#Model 1(Medical + Environmental factors)
-# ------------------------------
-# METRICS FOR ASTHMA MODEL
-# ------------------------------
+### Random Forest 
+###############################################################
+# --------------- Model 1: Medical + Environmental ------------#
+###############################################################
 
-# Metrics
+# ---- Performance Metrics ----
 rf_accuracy_asthma  <- Accuracy(rf_pred_asthma, y_test_rf_asthma)
 rf_precision_asthma <- Precision(rf_pred_asthma, y_test_rf_asthma, positive = "1")
 rf_recall_asthma    <- Recall(rf_pred_asthma,    y_test_rf_asthma, positive = "1")
 rf_f1_asthma        <- F1_Score(rf_pred_asthma,  y_test_rf_asthma, positive = "1")
 
-# ROC-AUC
+# ROC & AUC
 rf_roc_asthma <- roc(y_test_rf_asthma, rf_pred_prob_asthma)
 rf_auc_asthma <- auc(rf_roc_asthma)
 
-# Display metrics
+# ---- Metrics Table ----
 asthma_metrics <- data.frame(
   Model = "Random Forest (Medical + Environmental)",
   Accuracy  = rf_accuracy_asthma,
@@ -170,10 +169,13 @@ asthma_metrics <- data.frame(
 )
 asthma_metrics
 
-# ROC Curve
+# ---- ROC Curve ----
 plot(rf_roc_asthma, col = "blue", main = "ROC Curve - Random Forest (Medical + Environmental)")
 
+# ---- SHAP-like Feature Importances ----
+# Random Forest importance is averaged Gini + permutation importance (proxy for SHAP)
 importance_matrix_asthma <- importance(rf_model_asthma)
+# Take mean of first two columns (MeanDecreaseAccuracy + MeanDecreaseGini)
 mean_vals_asthma <- rowMeans(importance_matrix_asthma[, 1:2])
 
 shap_table_asthma <- data.frame(
@@ -184,18 +186,21 @@ shap_table_asthma <- data.frame(
 rownames(shap_table_asthma) <- NULL
 print(shap_table_asthma)
 
-#Model 1(Medical factors)
-# Metrics
+###############################################################
+# -------------------- Model 2: Medical Only ------------------#
+###############################################################
+
+# ---- Performance Metrics ----
 rf_accuracy_medical  <- Accuracy(rf_pred_medical, y_test_rf_medical)
 rf_precision_medical <- Precision(rf_pred_medical, y_test_rf_medical, positive = "1")
 rf_recall_medical    <- Recall(rf_pred_medical,    y_test_rf_medical, positive = "1")
 rf_f1_medical        <- F1_Score(rf_pred_medical,  y_test_rf_medical, positive = "1")
 
-# ROC-AUC
+# ROC & AUC
 rf_roc_medical <- roc(y_test_rf_medical, rf_pred_prob_medical)
 rf_auc_medical <- auc(rf_roc_medical)
 
-# Display metrics
+# ---- Metrics Table ----
 medical_metrics <- data.frame(
   Model = "Random Forest (Medical Only)",
   Accuracy  = rf_accuracy_medical,
@@ -206,9 +211,10 @@ medical_metrics <- data.frame(
 )
 medical_metrics
 
-# ROC Curve
+# ---- ROC Curve ----
 plot(rf_roc_medical, col = "red", main = "ROC Curve - RF (Medical Only)")
 
+# ---- SHAP-like Feature Importances ----
 importance_matrix_medical <- importance(rf_model_medical)
 mean_vals_medical <- rowMeans(importance_matrix_medical[, 1:2])
 
@@ -220,9 +226,16 @@ shap_table_medical <- data.frame(
 rownames(shap_table_medical) <- NULL
 print(shap_table_medical)
 
-final_metrics <- rbind(asthma_metrics, medical_metrics)
-final_metrics
+###############################################################
+# ----------- Combine RF Metrics (Both Models) ---------------#
+###############################################################
 
+RF_final_metrics <- rbind(asthma_metrics, medical_metrics)
+RF_final_metrics
+
+###############################################################
+# ----------- Compare Feature Importances Side-by-Side --------#
+###############################################################
 
 shap_table_asthma$Model  <- "Medical + Environmental"
 shap_table_medical$Model <- "Medical Only"
@@ -234,8 +247,7 @@ shap_compare <- merge(
   all = TRUE,
   suffixes = c("_MedEnv", "_MedOnly")
 )
-
-# Clean columns
+# Keep only SHAP columns for comparison
 shap_compare <- shap_compare %>%
   select(Feature,
          SHAPValues_MedEnv,
@@ -400,30 +412,22 @@ y_test_numeric_medical <- as.numeric(as.character(y_test_medical))
 
 ### XGBoost Model
 ```{r}
-# ---- Metrics for Medical + Environmental ----
+### XGBoost Model 
+###############################################################
+# --------------- Model 3: Medical + Environmental ------------#
+###############################################################
 
-x_train_asthma <- as.matrix(train_asthma %>% select(-Has_Asthma))
-y_train_asthma <- train_asthma$Has_Asthma
-
-x_test_asthma  <- as.matrix(test_asthma %>% select(-Has_Asthma))
-y_test_asthma  <- test_asthma$Has_Asthma
-
-x_train_medical <- as.matrix(train_medical %>% select(-Has_Asthma))
-y_train_medical <- train_medical$Has_Asthma
-
-x_test_medical  <- as.matrix(test_medical %>% select(-Has_Asthma))
-y_test_medical  <- test_medical$Has_Asthma
-
+# ---- Performance Metrics ----
 xgb_accuracy_asthma  <- Accuracy(xgb_pred_asthma, y_test_numeric_asthma)
 xgb_precision_asthma <- Precision(xgb_pred_asthma, y_test_numeric_asthma, positive = "1")
 xgb_recall_asthma    <- Recall(xgb_pred_asthma,    y_test_numeric_asthma, positive = "1")
 xgb_f1_asthma        <- F1_Score(xgb_pred_asthma,  y_test_numeric_asthma, positive = "1")
 
-# ROC-AUC
+# ---- ROC & AUC ----
 xgb_roc_asthma <- roc(y_test_numeric_asthma, xgb_pred_prob_asthma)
 xgb_auc_asthma <- auc(xgb_roc_asthma)
 
-# ---- Table ----
+# ---- Metrics Table ----
 metrics_xgb_asthma <- data.frame(
   Model = "XGBoost (Medical + Environmental)",
   Accuracy = xgb_accuracy_asthma,
@@ -435,9 +439,10 @@ metrics_xgb_asthma <- data.frame(
 
 metrics_xgb_asthma
 
-# ROC Curve
+# ---- ROC Curve ----
 plot(xgb_roc_asthma, col = "blue", main = "ROC Curve - XGB (Medical + Environmental)")
 
+# ---- SHAP Values (XGBoost Native) ----
 shap_asthma <- predict(xgb_model_asthma, x_test_asthma, predcontrib = TRUE)
 shap_asthma <- shap_asthma[, -ncol(shap_asthma)]  # remove bias term
 
@@ -450,17 +455,22 @@ shap_table_asthma <- data.frame(
 
 print(shap_table_asthma)
 
-# ---- Metrics for Medical Only ----
+###############################################################
+# ------------------ Model 4: XGBoost (Medical Only) ---------#
+###############################################################
+
+# ---- Performance Metrics ----
+
 xgb_accuracy_medical  <- Accuracy(xgb_pred_medical, y_test_numeric_medical)
 xgb_precision_medical <- Precision(xgb_pred_medical, y_test_numeric_medical, positive = "1")
 xgb_recall_medical    <- Recall(xgb_pred_medical,    y_test_numeric_medical, positive = "1")
 xgb_f1_medical        <- F1_Score(xgb_pred_medical,  y_test_numeric_medical, positive = "1")
 
-# ROC-AUC
+# ---- ROC & AUC ----
 xgb_roc_medical <- roc(y_test_numeric_medical, xgb_pred_prob_medical)
 xgb_auc_medical <- auc(xgb_roc_medical)
 
-# ---- Table ----
+# ---- Metrics Table ----
 metrics_xgb_medical <- data.frame(
   Model = "XGBoost (Medical Only)",
   Accuracy = xgb_accuracy_medical,
@@ -472,15 +482,22 @@ metrics_xgb_medical <- data.frame(
 
 metrics_xgb_medical
 
-# ROC Curve
+# ---- ROC Curve ----
 plot(xgb_roc_medical, col = "red", main = "ROC Curve - XGB (Medical Only)")
 
-combined_xgb_metrics <- rbind(
+###############################################################
+# ----------- Combine XGBoost Metrics (Both Models) ----------#
+###############################################################
+
+xgb_final_metrics <- rbind(
   metrics_xgb_asthma,
   metrics_xgb_medical
 )
+xgb_final_metrics
 
-combined_xgb_metrics
+###############################################################
+# ----------- SHAP Comparison: Side-by-Side -----------------#
+###############################################################
 
 shap_medical <- predict(xgb_model_medical, x_test_medical, predcontrib = TRUE)
 shap_medical <- shap_medical[, -ncol(shap_medical)]  # remove bias term
@@ -510,8 +527,8 @@ print(shap_compare)
 ```
 ```{r}
 combined_all_models <- rbind(
-  final_metrics,
-  combined_xgb_metrics
+  RF_final_metrics,
+  xgb_final_metrics
 )
 
 combined_all_models
