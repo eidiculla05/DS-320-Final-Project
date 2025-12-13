@@ -22,7 +22,9 @@ Final Compiled RMD
 
 ## Authors 
 This ReadMe was written and modified with the use of Generative AI. 
+
 Ishita Mittal 
 
-Project Authors 
+Project Authors: 
+
 Eli Idiculla, Gracy Prasanna, Aruushi Naik, Ishita Mittal, Sarah Khan
