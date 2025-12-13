@@ -1,5 +1,5 @@
 # DS-320-Final-Project - Group A7
-## Title 
+## Medical vs. Environmental Determinants of Asthma: A Data-Driven Investigation 
 ### Overview 
 This repository contains the final project for DS320: Data Integration. The goal of this project is to demonstrate an end-to-end data integration and modeling workflow, including data preparation, integration, model development, and evaluation. It will utilize the data set - Asthma Synthetic Medical Dataset obtained from Kaggle. 
 ### Repository Structure 
